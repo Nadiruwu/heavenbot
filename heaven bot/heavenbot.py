@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import ui
-from discord.ui import Button, View
+from discord.ui import Button, View, Modal, TextInput, Select
 import json
 import asyncio
 import os
@@ -34,157 +34,187 @@ def create_table():
     conn.close()
 
 create_table()
-class VCControlView(View):
+class VCControlView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+        self.user_select_menu = UserSelectMenu()
+        self.add_item(self.user_select_menu)
 
-@discord.ui.button(label="🔓 Abrir", style=discord.ButtonStyle.green)
-async def open_vc(self, interaction: discord.Interaction, button: Button):
-    await interaction.response.defer()
-    channel = interaction.user.voice.channel if interaction.user.voice else None
+    @discord.ui.button(label="🔓 Abrir", style=discord.ButtonStyle.green, row=0)
+    async def open_vc(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer()
+        channel = interaction.user.voice.channel if interaction.user.voice else None
 
-    if not channel:
-        await interaction.followup.send("❌ No estás en un canal de voz.", ephemeral=True)
-        return
+        if not channel:
+            await interaction.followup.send(embed=self.create_embed("❌ No estás en un canal de voz."), ephemeral=True)
+            return
 
-    # Check if the user is the owner of the channel
-    owner_id = get_channel_owner_by_id(channel.id)
-    if owner_id != interaction.user.id:
-        await interaction.followup.send("❌ No eres el dueño de este canal.", ephemeral=True)
-        return
+        owner_id = get_channel_owner_by_id(channel.id)
+        if owner_id != interaction.user.id:
+            await interaction.followup.send(embed=self.create_embed("❌ No eres el dueño de este canal."), ephemeral=True)
+            return
 
-    # Make the channel public
-    await channel.set_permissions(interaction.guild.default_role, connect=True)
-    await interaction.followup.send(f"✅ El canal **{channel.name}** está ahora **abierto**.", ephemeral=True)
+        await channel.set_permissions(interaction.guild.default_role, connect=True)
+        await interaction.followup.send(embed=self.create_embed(f"✅ El canal **{channel.name}** está ahora **abierto**."), ephemeral=True)
 
-@discord.ui.button(label="🔒 Cerrar", style=discord.ButtonStyle.red)
-async def close_vc(self, interaction: discord.Interaction, button: Button):
-    await interaction.response.defer()
-    channel = interaction.user.voice.channel if interaction.user.voice else None
+    @discord.ui.button(label="🔒 Cerrar", style=discord.ButtonStyle.red, row=0)
+    async def close_vc(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer()
+        channel = interaction.user.voice.channel if interaction.user.voice else None
 
-    if not channel:
-        await interaction.followup.send("❌ No estás en un canal de voz.", ephemeral=True)
-        return
+        if not channel:
+            await interaction.followup.send(embed=self.create_embed("❌ No estás en un canal de voz."), ephemeral=True)
+            return
 
-    # Check if the user is the owner of the channel
-    owner_id = get_channel_owner_by_id(channel.id)
-    if owner_id != interaction.user.id:
-        await interaction.followup.send("❌ No eres el dueño de este canal.", ephemeral=True)
-        return
+        owner_id = get_channel_owner_by_id(channel.id)
+        if owner_id != interaction.user.id:
+            await interaction.followup.send(embed=self.create_embed("❌ No eres el dueño de este canal."), ephemeral=True)
+            return
 
-    # Make the channel private
-    await channel.set_permissions(interaction.guild.default_role, connect=False)
-    await interaction.followup.send(f"✅ El canal **{channel.name}** está ahora **cerrado**.", ephemeral=True)
+        await channel.set_permissions(interaction.guild.default_role, connect=False)
+        await interaction.followup.send(embed=self.create_embed(f"✅ El canal **{channel.name}** está ahora **cerrado**."), ephemeral=True)
 
-    @discord.ui.button(label="✏️ Renombrar", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="✏️ Renombrar", style=discord.ButtonStyle.blurple, row=1)
     async def rename_vc(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(RenameModal())
 
-    @discord.ui.button(label="✅ Permitir", style=discord.ButtonStyle.green)
-    async def allow_vc(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(PermissionModal("permit"))
+    @discord.ui.button(label="🗑️ Eliminar", style=discord.ButtonStyle.red, row=2)
+    async def delete_vc(self, interaction: discord.Interaction, button: Button):
+        channel = interaction.user.voice.channel if interaction.user.voice else None
 
-    @discord.ui.button(label="🚷 Expulsar", style=discord.ButtonStyle.red)
-    async def kick_vc(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(PermissionModal("kick"))
+        if not channel:
+            await interaction.response.send_message(embed=self.create_embed("❌ No estás en un canal de voz."), ephemeral=True)
+            return
 
-    @discord.ui.button(label="⛔ Banear", style=discord.ButtonStyle.red)
-    async def ban_vc(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_modal(PermissionModal("ban"))
+        owner_id = get_channel_owner_by_id(channel.id)
+        if owner_id != interaction.user.id:
+            await interaction.response.send_message(embed=self.create_embed("❌ No eres el dueño de este canal."), ephemeral=True)
+            return
 
-@discord.ui.button(label="👀 Visibilidad", style=discord.ButtonStyle.gray)
-async def view_vc(self, interaction: discord.Interaction, button: Button):
-    channel = interaction.user.voice.channel if interaction.user.voice else None
-
-    if not channel:
-        await interaction.response.send_message("❌ No estás en un canal de voz.", ephemeral=True)
-        return
-
-    # Check if the user is the owner of the channel
-    owner_id = get_channel_owner_by_id(channel.id)
-    if owner_id != interaction.user.id:
-        await interaction.response.send_message("❌ No eres el dueño de este canal.", ephemeral=True)
-        return
-
-    # Toggle visibility
-    overwrites = channel.overwrites_for(interaction.guild.default_role)
-    if overwrites.connect is False:
-        await channel.set_permissions(interaction.guild.default_role, connect=True)
-        await interaction.response.send_message("✅ El canal ahora es **público**.", ephemeral=True)
-    else:
-        await channel.set_permissions(interaction.guild.default_role, connect=False)
-        await interaction.response.send_message("✅ El canal ahora es **privado**.", ephemeral=True)
-
-@discord.ui.button(label="🗑️ Eliminar", style=discord.ButtonStyle.red)
-async def delete_vc(self, interaction: discord.Interaction, button: Button):
-    channel = interaction.user.voice.channel if interaction.user.voice else None
-
-    if not channel:
-        await interaction.response.send_message("❌ No estás en un canal de voz.", ephemeral=True)
-        return
-
-    # Check if the user is the owner of the channel
-    owner_id = get_channel_owner_by_id(channel.id)
-    if owner_id != interaction.user.id:
-        await interaction.response.send_message("❌ No eres el dueño de este canal.", ephemeral=True)
-        return
-
-    # Confirm deletion
-    await interaction.response.send_message("⚠️ ¿Estás seguro de eliminar el canal? Responde con `sí` o `no`.", ephemeral=True)
-
-    def check(m):
-        return m.author == interaction.user and m.channel == interaction.channel and m.content.lower() in ["sí", "no"]
-
-    try:
-        response = await bot.wait_for("message", timeout=30.0, check=check)
-        if response.content.lower() == "sí":
+        confirm_embed = discord.Embed(title="⚠️ Confirmar Eliminación", description="¿Estás seguro de que quieres eliminar este canal?", color=discord.Color.red())
+        view = DeleteConfirmationView(channel, interaction.user)
+        await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
+        
+        await view.wait()
+        if view.result is True:
             await channel.delete()
-            await interaction.followup.send(f"✅ El canal **{channel.name}** ha sido eliminado.", ephemeral=True)
+            await interaction.followup.send(embed=self.create_embed(f"✅ El canal **{channel.name}** ha sido eliminado."), ephemeral=True)
         else:
-            await interaction.followup.send("❌ Eliminación cancelada.", ephemeral=True)
-    except asyncio.TimeoutError:
-        await interaction.followup.send("❌ Tiempo de espera agotado. Eliminación cancelada.", ephemeral=True)
-class RenameModal(discord.ui.Modal, title="Renombrar Canal"):
-    new_name = discord.ui.TextInput(label="Nuevo Nombre")
+            await interaction.followup.send(embed=self.create_embed("❌ Eliminación cancelada."), ephemeral=True)
+
+    @staticmethod
+    def create_embed(message: str) -> discord.Embed:
+        return discord.Embed(description=message, color=discord.Color.blue())
+
+class RenameModal(Modal):
+    def __init__(self):
+        super().__init__(title="Renombrar Canal")
+        self.new_name = TextInput(label="Nuevo Nombre")
+        self.add_item(self.new_name)
     
     async def on_submit(self, interaction: discord.Interaction):
         channel = interaction.user.voice.channel if interaction.user.voice else None
 
         if not channel:
-            await interaction.response.send_message("❌ No estás en un canal de voz.", ephemeral=True)
+            await interaction.response.send_message(embed=VCControlView.create_embed("❌ No estás en un canal de voz."), ephemeral=True)
             return
 
-        # Check if the user is the owner of the channel
         owner_id = get_channel_owner_by_id(channel.id)
         if owner_id != interaction.user.id:
-            await interaction.response.send_message("❌ No eres el dueño de este canal.", ephemeral=True)
+            await interaction.response.send_message(embed=VCControlView.create_embed("❌ No eres el dueño de este canal."), ephemeral=True)
             return
 
-        # Rename the channel
         await channel.edit(name=self.new_name.value)
-        await interaction.response.send_message(f"✅ Canal renombrado a: **{self.new_name.value}**", ephemeral=True)
+        await interaction.response.send_message(embed=VCControlView.create_embed(f"✅ Canal renombrado a: **{self.new_name.value}**"), ephemeral=True)
 
-class PermissionModal(discord.ui.Modal):
+class UserSelectMenu(discord.ui.Select):
+    def __init__(self):
+        super().__init__(placeholder="Selecciona un usuario", min_values=1, max_values=1)
+
+    async def update_options(self, interaction):
+        # Agregar opciones de miembros cuando se muestre el menú
+        options = [
+            discord.SelectOption(label=member.display_name, value=str(member.id))
+            for member in interaction.guild.members
+            if member.voice  # Solo miembros que están en un canal de voz
+        ]
+        self.options = options
+
+    async def callback(self, interaction: discord.Interaction):
+        # Obtener el canal de voz del usuario que interactuó
+        channel = interaction.user.voice.channel if interaction.user.voice else None
+        if not channel:
+            await interaction.response.send_message(embed=VCControlView.create_embed("❌ No estás en un canal de voz."), ephemeral=True)
+            return
+
+        # Verificar si el usuario es el dueño del canal
+        owner_id = get_channel_owner_by_id(channel.id)  # Asumimos que esta función existe
+        if owner_id != interaction.user.id:
+            await interaction.response.send_message(embed=VCControlView.create_embed("❌ No eres el dueño de este canal."), ephemeral=True)
+            return
+
+        # Obtener el miembro seleccionado en el menú
+        member = interaction.guild.get_member(int(self.values[0]))
+        if not member:
+            await interaction.response.send_message(embed=VCControlView.create_embed("❌ Usuario no encontrado."), ephemeral=True)
+            return
+
+        # Verificar qué acción se está tomando según el custom_id
+        action = interaction.custom_id  # Este ID se debe definir cuando añades el Select al View
+
+        if action == "permit":
+            # Permitir que el miembro se una al canal
+            await channel.set_permissions(member, connect=True)
+            await interaction.response.send_message(embed=VCControlView.create_embed(f"✅ Se ha permitido a **{member.display_name}** unirse al canal."), ephemeral=True)
+
+        elif action == "kick":
+            # Expulsar al miembro del canal si está presente
+            if member in channel.members:
+                await member.move_to(None)
+                await interaction.response.send_message(embed=VCControlView.create_embed(f"✅ **{member.display_name}** ha sido expulsado del canal."), ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=VCControlView.create_embed("❌ El usuario no está en el canal."), ephemeral=True)
+
+        elif action == "ban":
+            # Baneamos al miembro, impidiéndole unirse al canal
+            await channel.set_permissions(member, connect=False)
+            await interaction.response.send_message(embed=VCControlView.create_embed(f"✅ **{member.display_name}** ha sido baneado del canal."), ephemeral=True)
+
+        else:
+            await interaction.response.send_message(embed=VCControlView.create_embed("❌ Acción no válida."), ephemeral=True)
+
+class PermissionModal(Modal):
     def __init__(self, action):
         super().__init__(title=f"{action.capitalize()} Usuario")
         self.action = action
-        self.username = discord.ui.TextInput(label="Usuario (ID o mención)")
+        self.username = TextInput(label="Usuario (ID o mención)")
         self.add_item(self.username)
-    
+class DeleteConfirmationView(View):
+    def __init__(self, channel, user):
+        super().__init__(timeout=30)
+        self.channel = channel
+        self.user = user
+        self.result = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user != self.user:
+            await interaction.response.send_message(embed=VCControlView.create_embed("❌ No puedes usar este panel."), ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="✅ Sí", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer()
+        self.result = True
+        self.stop()
+
+    @discord.ui.button(label="❌ No", style=discord.ButtonStyle.gray)
+    async def cancel(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer()
+        self.result = False
+        self.stop()
     async def on_submit(self, interaction: discord.Interaction):
-        channel = interaction.user.voice.channel if interaction.user.voice else None
-
-        if not channel:
-            await interaction.response.send_message("❌ No estás en un canal de voz.", ephemeral=True)
-            return
-
-        # Check if the user is the owner of the channel
-        owner_id = get_channel_owner_by_id(channel.id)
-        if owner_id != interaction.user.id:
-            await interaction.response.send_message("❌ No eres el dueño de este canal.", ephemeral=True)
-            return
-
-        # Resolve the target user
+        channel = interaction.user.voice.channel
         try:
             user_id = int(self.username.value)
             member = interaction.guild.get_member(user_id)
@@ -195,20 +225,28 @@ class PermissionModal(discord.ui.Modal):
             await interaction.response.send_message("❌ ID de usuario no válido.", ephemeral=True)
             return
 
-        # Apply the action
         if self.action == "permit":
             await channel.set_permissions(member, connect=True)
-            await interaction.response.send_message(f"✅ Se ha permitido a **{member.display_name}** unirse al canal.", ephemeral=True)
-        elif self.action == "kick":
-            if member in channel.members:
-                await member.move_to(None)
-                await interaction.response.send_message(f"✅ **{member.display_name}** ha sido expulsado del canal.", ephemeral=True)
-            else:
-                await interaction.response.send_message("❌ El usuario no está en el canal.", ephemeral=True)
-        elif self.action == "ban":
-            await channel.set_permissions(member, connect=False)
-            await interaction.response.send_message(f"✅ **{member.display_name}** ha sido baneado del canal.", ephemeral=True)
+            embed = discord.Embed(title="✅ Permiso Concedido", description=f"**{member.display_name}** ahora puede unirse.", color=discord.Color.green())
 
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+# Función para obtener el dueño de un canal
+def get_channel_owner_by_id(channel_id):
+    conn = sqlite3.connect("your_database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT owner_id FROM channels WHERE channel_id = ?", (channel_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else None
+
+# Función para configurar el canal de interfaz
+async def setup_interface_channel(guild):
+    existing_channel = discord.utils.get(guild.text_channels, name="interfaz")
+    if not existing_channel:
+        channel = await guild.create_text_channel("interfaz")
+    else:
+        channel = existing_channel
+    return channel
 def get_channel_owner_by_id(channel_id):
     conn = sqlite3.connect("your_database.db")
     cursor = conn.cursor()
@@ -321,20 +359,21 @@ async def on_ready():
                 guarded_channels[category.id] = [
                     (ch.name, type(ch), ch.overwrites, ch.position) for ch in category.channels
                 ]
-    
+    channel = await setup_interface_channel(guild)
+    await channel.purge()
+    embed = discord.Embed(
+        title="🎛️ Panel de Gestión de Canales de Voz",
+        description="Controla tu canal de voz con los botones a continuación.",
+        color=discord.Color.blue() )
+    view = VCControlView()
+    embed = discord.Embed(title="Selecciona un Usuario", description="Selecciona un miembro del canal de voz.")
+    await view.user_select_menu.update_options(interaction=None)
+    embed.set_footer(text="Sistema de Gestión de Canales de Voz")
+    await channel.send(embed=embed, view=view)
+    print(f"Interfaz de control enviada en {channel.name}")
     print("Estructura del servidor guardada.")
     await bot.change_presence(activity=discord.Game("Trabajando en Heaven"))
     await restore_your_database()
-    for guild in bot.guilds:
-        channel = await setup_interface_channel(guild)
-        view = VCControlView()
-        await channel.purge()
-        embed = discord.Embed(title="🎛️ Panel de Gestión de Canales de Voz", 
-                              description="Controla tu canal de voz con los botones a continuación.", 
-                              color=discord.Color.blue())
-        embed.set_footer(text="Sistema de Gestión de Canales de Voz")
-        await channel.send(embed=embed, view=view)
-        print(f"Interfaz de control enviada en {channel.name}")
 @bot.event
 async def on_presence_update(before, after):
     if not after or not after.activities:
